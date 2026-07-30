@@ -1,18 +1,14 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Генератор синтетических данных в схеме датасета REES46 (eCommerce events history).
+Генератор синтетических данных в схеме датасета
 
-Зачем нужен: позволяет поднять проект и прогнать все SQL-запросы за минуту,
-не дожидаясь скачивания реального датасета с Kaggle. Структура колонок,
-типы и формат времени полностью совпадают с боевым файлом, поэтому запросы,
-отлаженные на сэмпле, без изменений работают на реальных данных.
+Зачем нужен: позволяет поднять проект и прогнать все SQL-запросы,
+не дожидаясь скачивания реального датасета с Kaggle.
 
 Данные генерируются с реалистичными свойствами:
-  * воронка с затухающей конверсией (view -> cart -> purchase);
-  * когортное удержание с экспоненциальным затуханием;
-  * недельная сезонность активности (будни выше выходных);
-  * приток новых пользователей каждый месяц.
+  воронка с затухающей конверсией;
+ когортное удержание с экспоненциальным затуханием;
+  недельная сезонность активности;
+ приток новых пользователей каждый месяц.
 
 Использование:
     python scripts/generate_sample_data.py --events 200000 --out data/events.csv
@@ -24,19 +20,15 @@ import random
 import uuid
 from datetime import datetime, timedelta
 
-# --- Параметры «продукта», задающие форму метрик -------------------------------
+START_DATE = datetime(2020, 4, 1)  
+N_MONTHS = 8
 
-START_DATE = datetime(2020, 4, 1)   # начало наблюдений
-N_MONTHS = 8                        # длина периода (важно для когортного анализа)
+P_VIEW_TO_CART = 0.28               
+P_CART_TO_PURCHASE = 0.34           
+P_REMOVE_FROM_CART = 0.18           
 
-# Вероятности перехода по воронке
-P_VIEW_TO_CART = 0.28               # доля сессий, где после просмотра был add-to-cart
-P_CART_TO_PURCHASE = 0.34           # доля корзин, доведённых до покупки
-P_REMOVE_FROM_CART = 0.18           # доля корзин, из которых товар удалили
-
-# Удержание: вероятность, что пользователь активен через N месяцев после прихода
-RETENTION_BASE = 0.42               # удержание на 1-й месяц
-RETENTION_DECAY = 0.62              # множитель затухания за каждый следующий месяц
+RETENTION_BASE = 0.42             
+RETENTION_DECAY = 0.62            
 
 CATEGORIES = [
     ("electronics.smartphone", ["samsung", "apple", "xiaomi", "huawei"]),
@@ -44,7 +36,7 @@ CATEGORIES = [
     ("computers.notebook", ["lenovo", "asus", "hp", "apple"]),
     ("appliances.kitchen.refrigerator", ["lg", "bosch", "samsung"]),
     ("electronics.video.tv", ["lg", "samsung", "sony"]),
-    ("apparel.shoes", [None, "nike", "adidas"]),   # None -> пустой brand, как в реальных данных
+    ("apparel.shoes", [None, "nike", "adidas"]), 
 ]
 
 
@@ -60,7 +52,6 @@ def random_time_in_month(rng: random.Random, m_start: datetime) -> datetime:
     m_end = month_start(m_start, 1)
     days_in_month = (m_end - m_start).days
 
-    # Будни активнее выходных — подбираем день с учётом веса
     for _ in range(10):
         day = rng.randrange(days_in_month)
         candidate = m_start + timedelta(days=day)
@@ -68,7 +59,6 @@ def random_time_in_month(rng: random.Random, m_start: datetime) -> datetime:
         if rng.random() < weight:
             break
 
-    # Пик активности приходится на дневные/вечерние часы
     hour = min(23, max(0, int(rng.gauss(15, 4))))
     return candidate + timedelta(
         hours=hour, minutes=rng.randrange(60), seconds=rng.randrange(60)
@@ -78,7 +68,7 @@ def random_time_in_month(rng: random.Random, m_start: datetime) -> datetime:
 def build_session(rng: random.Random, user_id: int, session_start: datetime) -> list:
     """
     Генерирует список событий одной сессии, соблюдая хронологический порядок
-    шагов воронки: view -> (cart) -> (remove_from_cart) -> (purchase).
+    шагов воронки: view -> cart -> remove_from_cart -> purchase.
     """
     events = []
     session_id = str(uuid.uuid4())
@@ -90,25 +80,21 @@ def build_session(rng: random.Random, user_id: int, session_start: datetime) -> 
 
     t = session_start
 
-    # Шаг 1: один или несколько просмотров товара
     for _ in range(rng.randint(1, 4)):
         events.append((t, "view", product_id, category_id, category_code,
                        brand, price, user_id, session_id))
         t += timedelta(seconds=rng.randrange(20, 400))
 
-    # Шаг 2: добавление в корзину
     if rng.random() < P_VIEW_TO_CART:
         events.append((t, "cart", product_id, category_id, category_code,
                        brand, price, user_id, session_id))
         t += timedelta(seconds=rng.randrange(30, 900))
 
-        # Часть пользователей передумывает и удаляет товар из корзины
         if rng.random() < P_REMOVE_FROM_CART:
             events.append((t, "remove_from_cart", product_id, category_id,
                            category_code, brand, price, user_id, session_id))
             t += timedelta(seconds=rng.randrange(30, 600))
 
-        # Шаг 3: покупка
         if rng.random() < P_CART_TO_PURCHASE:
             events.append((t, "purchase", product_id, category_id, category_code,
                            brand, price, user_id, session_id))
@@ -122,7 +108,6 @@ def generate(target_events: int, seed: int) -> list:
     rows = []
     next_user_id = 500_000_000
 
-    # Сколько новых пользователей приходит каждый месяц (когорты разного размера)
     monthly_new_users = [
         int(1400 * (1 + 0.12 * i) * rng.uniform(0.85, 1.15)) for i in range(N_MONTHS)
     ]
@@ -134,13 +119,11 @@ def generate(target_events: int, seed: int) -> list:
             user_id = next_user_id
             next_user_id += 1
 
-            # Месяц прихода: 1-3 сессии
             for _ in range(rng.randint(1, 3)):
                 rows.extend(
                     build_session(rng, user_id, random_time_in_month(rng, cohort_start))
                 )
 
-            # Последующие месяцы: пользователь возвращается с затухающей вероятностью
             p_return = RETENTION_BASE
             for offset in range(1, N_MONTHS - cohort_idx):
                 if rng.random() >= p_return:
@@ -179,11 +162,10 @@ def main() -> None:
             "category_code", "brand", "price", "user_id", "user_session",
         ])
         for r in rows:
-            # Формат времени идентичен реальному датасету: '2020-04-01 10:15:22 UTC'
             writer.writerow([
                 r[0].strftime("%Y-%m-%d %H:%M:%S UTC"),
                 r[1], r[2], r[3],
-                r[4] or "",          # пустая строка вместо NULL — как в исходном CSV
+                r[4] or "",          
                 r[5] or "",
                 r[6], r[7], r[8],
             ])
