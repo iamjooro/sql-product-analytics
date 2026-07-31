@@ -27,15 +27,15 @@
 
 ```sql
 CREATE TABLE events (
-    event_time      TIMESTAMPTZ,    -- время события (UTC)
-    event_type      VARCHAR(20),    -- 'view' | 'cart' | 'remove_from_cart' | 'purchase'
+    event_time      TIMESTAMPTZ,    
+    event_type      VARCHAR(20),    
     product_id      BIGINT,
     category_id     BIGINT,
     category_code   VARCHAR(200),
     brand           VARCHAR(100),
     price           NUMERIC(10, 2),
     user_id         BIGINT,
-    user_session    UUID            -- идентификатор визита, ключ для воронки
+    user_session    UUID         
 );
 ```
 
@@ -58,7 +58,7 @@ CREATE TABLE events (
 ├── sql/
 │   ├── 01_setup_and_load.sql      # DDL, загрузка CSV, индексы, проверки качества
 │   ├── 02_activity_metrics.sql    # Блок 1: DAU / WAU / MAU / Sticky Factor
-│   ├── 03_funnel_analysis.sql     # Блок 2: воронка View => Cart => Purchase
+│   ├── 03_funnel_analysis.sql     # Блок 2: воронка View -> Cart -> Purchase
 │   └── 04_cohort_retention.sql    # Блок 3: анализ удержания
 ├── scripts/
 │   └── generate_sample_data.py    # генератор тестовых данных
