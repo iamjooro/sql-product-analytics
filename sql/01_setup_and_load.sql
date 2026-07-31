@@ -39,7 +39,7 @@ CREATE TABLE events (
     brand           VARCHAR(100),
     price           NUMERIC(10, 2),
     user_id         BIGINT,
-    user_session    UUID
+    user_session    VARCHAR(36)
 );
 
 -- Вычищаем пустые строки через NULLIF, иначе пустые бренды/категории
@@ -64,7 +64,7 @@ SELECT
     NULLIF(brand, ''),
     NULLIF(price, '')::NUMERIC,
     NULLIF(user_id, '')::BIGINT,
-    NULLIF(user_session, '')::UUID
+    NULLIF(user_session, '') 
 FROM events_raw;
 
 DROP TABLE events_raw;
